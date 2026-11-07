@@ -61,6 +61,9 @@ def main() -> None:
     corpo = {
         "model": modelo,
         "stream": False,
+        # O qwen3.5 "pensa" antes de responder; desligar deixa a resposta
+        # muito mais rápida e a tarefa não precisa desse raciocínio.
+        "think": False,
         "messages": [
             {"role": "system", "content": INSTRUCOES},
             {"role": "user", "content": email},
