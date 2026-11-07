@@ -62,6 +62,30 @@ Instale as dependências:
 pip install -r requirements.txt
 ```
 
+## LLM utilizado
+
+A aplicação usa a API de chat do [Ollama](https://ollama.com) (`POST /api/chat`)
+e funciona com dois servidores, trocando apenas o `.env`:
+
+| Ambiente | Servidor | Modelo | Uso |
+|---|---|---|---|
+| Local | Ollama instalado na máquina (`http://localhost:11434`) | `qwen3.5:4b-q4_K_M` | desenvolvimento e testes |
+| Institucional | LLM do Devel (`https://llm-internal.softex:9001`) | `qwen3.5:9b-q4_K_M` | demonstração; acessível somente de dentro de um container no portal Devel |
+
+O modelo de 9B (6,6 GB) não cabe na memória da máquina de desenvolvimento
+(7,8 GB de RAM, sem GPU dedicada); por isso, localmente é usada a versão de 4B
+da mesma família.
+
+### Preparar o Ollama local
+
+1. Instale o Ollama: <https://ollama.com/download> (no Windows também é possível
+   usar `winget install Ollama.Ollama`).
+2. Baixe o modelo (cerca de 3,3 GB):
+
+```bash
+ollama pull qwen3.5:4b-q4_K_M
+```
+
 ## Configuração
 
 Copie o arquivo de exemplo e preencha os valores:
@@ -74,9 +98,9 @@ copy .env.example .env
 
 | Variável | Descrição |
 |---|---|
-| `LLM_BASE_URL` | Endereço do servidor Ollama do LLM institucional |
-| `LLM_MODEL` | Nome do modelo (ex.: `qwen3.5:9b-q4_K_M`) |
-| `LLM_API_KEY` | Chave de acesso, se o ambiente exigir; caso contrário, deixe vazio |
+| `LLM_BASE_URL` | Endereço do servidor Ollama (local ou institucional) |
+| `LLM_MODEL` | Nome do modelo (ex.: `qwen3.5:4b-q4_K_M`) |
+| `LLM_API_KEY` | Chave de acesso, se o servidor exigir; o Ollama local e o Devel não exigem, deixe vazio |
 
 ## Execução
 
