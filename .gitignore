@@ -1,0 +1,21 @@
+# Segredos e configuração local (nunca versionar)
+.env
+
+# Ambiente virtual
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Logs
+*.log
+logs/
+
+# Editores / sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
