@@ -1,4 +1,4 @@
-"""Triagem de solicitações em e-mails (P0 - nível Básico).
+"""Triagem de solicitações em e-mails (P0).
 
 Lê o texto de um e-mail pelo terminal (ou de um arquivo .txt), envia ao LLM
 e mostra se o e-mail contém solicitações e quais são elas.
@@ -6,6 +6,14 @@ e mostra se o e-mail contém solicitações e quais são elas.
 Uso:
     python main.py                       # cola o e-mail no terminal
     python main.py exemplos/email_01.txt # lê o e-mail de um arquivo
+
+O fluxo é dividido em seis etapas, cada uma em sua própria função:
+    1. ler_entrada        -> obtém o texto do e-mail
+    2. carregar_config    -> lê as variáveis de ambiente (.env)
+    3. montar_requisicao  -> prepara o corpo e os cabeçalhos da chamada
+    4. chamar_modelo      -> envia a requisição HTTP ao servidor do LLM
+    5. extrair_texto      -> tira o texto útil da resposta JSON
+    6. exibir_resultado   -> mostra o resultado ao usuário
 """
 
 import os
@@ -30,10 +38,12 @@ Se SOLICITACAO for NAO, escreva "PEDIDOS: nenhum".
 Não invente pedidos nem prazos que não estejam no e-mail."""
 
 
-def ler_email() -> str:
-    """Lê o e-mail de um arquivo (se informado) ou do terminal."""
-    if len(sys.argv) > 1:
-        with open(sys.argv[1], encoding="utf-8") as arquivo:
+# 1. Entrada ----------------------------------------------------------------
+
+def ler_entrada(argumentos: list[str]) -> str:
+    """Lê o e-mail de um arquivo (se informado nos argumentos) ou do terminal."""
+    if len(argumentos) > 1:
+        with open(argumentos[1], encoding="utf-8") as arquivo:
             return arquivo.read()
 
     print("Cole o texto do e-mail e, ao final, digite FIM em uma linha sozinha:")
@@ -45,21 +55,33 @@ def ler_email() -> str:
     return "".join(linhas)
 
 
-def main() -> None:
-    load_dotenv()
-    base_url = os.environ["LLM_BASE_URL"]
-    modelo = os.environ["LLM_MODEL"]
-    chave = os.getenv("LLM_API_KEY")
+# 2. Configuração -----------------------------------------------------------
 
-    email = ler_email()
+def carregar_config() -> dict:
+    """Lê do ambiente (.env) o endereço do servidor, o modelo e a chave opcional."""
+    load_dotenv()
+    return {
+        "base_url": os.environ["LLM_BASE_URL"],
+        "modelo": os.environ["LLM_MODEL"],
+        "chave": os.getenv("LLM_API_KEY"),
+    }
+
+
+# 3. Preparação da solicitação ----------------------------------------------
+
+def montar_requisicao(email: str, config: dict) -> tuple[str, dict, dict]:
+    """Devolve a URL, os cabeçalhos e o corpo da chamada à API de chat do Ollama.
+
+    Documentação da API: https://github.com/ollama/ollama/blob/main/docs/api.md
+    """
+    url = f"{config['base_url'].rstrip('/')}/api/chat"
 
     cabecalhos = {"Content-Type": "application/json"}
-    if chave:
-        cabecalhos["Authorization"] = f"Bearer {chave}"
+    if config["chave"]:
+        cabecalhos["Authorization"] = f"Bearer {config['chave']}"
 
-    # API de chat do Ollama: https://github.com/ollama/ollama/blob/main/docs/api.md
     corpo = {
-        "model": modelo,
+        "model": config["modelo"],
         "stream": False,
         # O qwen3.5 "pensa" antes de responder; desligar deixa a resposta
         # muito mais rápida e a tarefa não precisa desse raciocínio.
@@ -69,18 +91,40 @@ def main() -> None:
             {"role": "user", "content": email},
         ],
     }
+    return url, cabecalhos, corpo
 
-    resposta = requests.post(
-        f"{base_url.rstrip('/')}/api/chat",
-        json=corpo,
-        headers=cabecalhos,
-        timeout=120,
-    )
+
+# 4. Chamada ao modelo ------------------------------------------------------
+
+def chamar_modelo(url: str, cabecalhos: dict, corpo: dict) -> dict:
+    """Envia a requisição ao servidor do LLM e devolve o JSON da resposta."""
+    resposta = requests.post(url, json=corpo, headers=cabecalhos, timeout=120)
     resposta.raise_for_status()
+    return resposta.json()
 
-    texto = resposta.json()["message"]["content"]
+
+# 5. Tratamento da resposta -------------------------------------------------
+
+def extrair_texto(dados: dict) -> str:
+    """Extrai o texto gerado pelo modelo do JSON devolvido pelo Ollama."""
+    return dados["message"]["content"].strip()
+
+
+# 6. Apresentação -----------------------------------------------------------
+
+def exibir_resultado(texto: str) -> None:
+    """Mostra o resultado da triagem no terminal."""
     print("\n===== Resultado da triagem =====")
-    print(texto.strip())
+    print(texto)
+
+
+def main() -> None:
+    email = ler_entrada(sys.argv)
+    config = carregar_config()
+    url, cabecalhos, corpo = montar_requisicao(email, config)
+    dados = chamar_modelo(url, cabecalhos, corpo)
+    texto = extrair_texto(dados)
+    exibir_resultado(texto)
 
 
 if __name__ == "__main__":
