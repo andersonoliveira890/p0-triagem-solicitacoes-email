@@ -213,6 +213,24 @@ Os testes estão registrados em
   necessários porque o Ollama local não exige chave e não produz esses erros sob
   demanda.
 
+### Como reproduzir a falha de comunicação
+
+Para ver o tratamento de "servidor desligado", pare o Ollama e execute o
+programa. **Fechar a janela do Ollama não desliga o servidor**: no Windows, use o
+ícone do Ollama na bandeja do sistema (perto do relógio) → **Quit Ollama**.
+
+```bash
+python main.py exemplos/email_04_informativo.txt
+```
+
+Saída esperada:
+
+```
+[Erro] Não foi possível conectar ao servidor do LLM (http://localhost:11434/api/chat). ...
+```
+
+Para voltar ao normal, abra o Ollama novamente.
+
 ## Limitações conhecidas
 
 - O modelo local de 4B às vezes erra o solicitante ou o prazo, ou foge do
