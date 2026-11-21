@@ -1,0 +1,61 @@
+# Integração contínua do P0.
+# 1. testes: roda os testes automatizados (sem chamada real ao LLM).
+# 2. imagem: gera a imagem Docker, confere que ela executa e a exporta como .tar
+#    para envio ao portal Devel (baixe em Actions > execução > Artifacts).
+name: CI
+
+on:
+  push:
+    branches: [main, desenvolvimento]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependências
+        run: pip install -r requirements-dev.txt
+
+      - name: Rodar testes
+        run: python -m pytest -v
+
+  imagem:
+    needs: testes
+    runs-on: ubuntu-latest
+    env:
+      IMAGEM: andersonoliveira890gmailcom:latest
+      ARQUIVO: andersonoliveira890gmailcom.tar
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Gerar imagem Docker
+        run: docker build -t "$IMAGEM" .
+
+      - name: Conferir que a imagem executa (sem LLM, espera erro tratado)
+        run: |
+          saida=$(docker run --rm \
+            -e LLM_BASE_URL=http://127.0.0.1:9 \
+            -e LLM_MODEL=teste \
+            -e EMAILS=exemplos/email_04_informativo.txt \
+            "$IMAGEM" 2>&1)
+          echo "$saida"
+          echo "$saida" | grep -q "Não foi possível conectar ao servidor do LLM"
+
+      - name: Exportar imagem para .tar
+        run: |
+          docker save --output "$ARQUIVO" "$IMAGEM"
+          ls -lh "$ARQUIVO"
+
+      - name: Disponibilizar o .tar para download
+        uses: actions/upload-artifact@v4
+        with:
+          name: imagem-devel
+          path: ${{ env.ARQUIVO }}
+          retention-days: 7
