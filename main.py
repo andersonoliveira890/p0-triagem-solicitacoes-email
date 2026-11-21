@@ -20,12 +20,22 @@ ar, timeout etc.) geram um ErroTriagem com uma mensagem compreensível, que é
 exibida ao usuário no lugar do erro técnico do Python.
 """
 
+import logging
 import os
 import re
 import sys
+import time
+from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 from dotenv import load_dotenv
+
+# Registros de execução: só metadados (modelo, servidor, tamanhos, tempos e
+# erros). Nunca são gravados o conteúdo do e-mail, a resposta do modelo nem a
+# chave de acesso.
+log = logging.getLogger("triagem")
+ARQUIVO_LOG = Path(__file__).parent / "logs" / "triagem.log"
 
 INSTRUCOES = """Você é um assistente de uma consultoria que acompanha fundos FIDC e CRI.
 Você recebe e-mails de construtoras e da gestora. Sua tarefa é dizer se o e-mail
@@ -42,7 +52,10 @@ PEDIDOS:
 Se SOLICITACAO for NAO, escreva "PEDIDOS: nenhum".
 Não invente pedidos nem prazos que não estejam no e-mail."""
 
-TIMEOUT_PADRAO = 120  # segundos; o modelo local em CPU pode levar ~1 minuto
+# Valores padrão dos parâmetros configuráveis pelo .env
+TIMEOUT_PADRAO = 120      # segundos; o modelo local em CPU pode levar ~1 minuto
+TEMPERATURA_PADRAO = 0.2  # baixa: extração de dados pede respostas estáveis
+MAX_TOKENS_PADRAO = 512   # suficiente para vários pedidos; evita respostas sem fim
 
 
 class ErroTriagem(Exception):
@@ -108,22 +121,39 @@ def carregar_config() -> dict:
             "O endereço deve começar com http:// ou https://."
         )
 
-    timeout_texto = os.getenv("LLM_TIMEOUT", "").strip()
-    try:
-        timeout = float(timeout_texto) if timeout_texto else TIMEOUT_PADRAO
-        if timeout <= 0:
-            raise ValueError
-    except ValueError:
-        raise ErroTriagem(
-            f"LLM_TIMEOUT inválido: '{timeout_texto}'. Use um número de segundos maior que zero."
-        )
-
     return {
         "base_url": base_url,
         "modelo": modelo,
         "chave": os.getenv("LLM_API_KEY", "").strip() or None,
-        "timeout": timeout,
+        "timeout": ler_numero("LLM_TIMEOUT", TIMEOUT_PADRAO, float, minimo=0,
+                              descricao="número de segundos maior que zero"),
+        "temperatura": ler_numero("LLM_TEMPERATURE", TEMPERATURA_PADRAO, float,
+                                  minimo=0, maximo=2, inclui_minimo=True,
+                                  descricao="número entre 0 e 2"),
+        "max_tokens": ler_numero("LLM_MAX_TOKENS", MAX_TOKENS_PADRAO, int, minimo=0,
+                                 descricao="número inteiro maior que zero"),
     }
+
+
+def ler_numero(nome: str, padrao, tipo, minimo=None, maximo=None,
+               inclui_minimo=False, descricao="número válido"):
+    """Lê uma variável numérica opcional do ambiente, validando o intervalo.
+
+    Se a variável estiver vazia ou ausente, devolve o valor padrão.
+    """
+    texto = os.getenv(nome, "").strip()
+    if not texto:
+        return padrao
+    try:
+        valor = tipo(texto)
+    except ValueError:
+        raise ErroTriagem(f"{nome} inválido: '{texto}'. Use um {descricao}.")
+
+    abaixo = minimo is not None and (valor < minimo if inclui_minimo else valor <= minimo)
+    acima = maximo is not None and valor > maximo
+    if abaixo or acima:
+        raise ErroTriagem(f"{nome} inválido: '{texto}'. Use um {descricao}.")
+    return valor
 
 
 # 3. Preparação da solicitação ----------------------------------------------
@@ -145,6 +175,11 @@ def montar_requisicao(email: str, config: dict) -> tuple[str, dict, dict]:
         # O qwen3.5 "pensa" antes de responder; desligar deixa a resposta
         # muito mais rápida e a tarefa não precisa desse raciocínio.
         "think": False,
+        # Parâmetros de geração, definidos no .env (sem alterar o código).
+        "options": {
+            "temperature": config["temperatura"],
+            "num_predict": config["max_tokens"],
+        },
         "messages": [
             {"role": "system", "content": INSTRUCOES},
             {"role": "user", "content": email},
@@ -161,6 +196,9 @@ def chamar_modelo(url: str, cabecalhos: dict, corpo: dict, timeout: float) -> di
     Traduz as falhas de comunicação em mensagens compreensíveis. A chave de
     acesso nunca é incluída nas mensagens.
     """
+    log.info("Chamada enviada: modelo=%s, servidor=%s, tamanho_email=%d caracteres",
+             corpo["model"], urlparse(url).netloc, len(corpo["messages"][-1]["content"]))
+    inicio = time.perf_counter()
     try:
         resposta = requests.post(url, json=corpo, headers=cabecalhos, timeout=timeout)
     except requests.exceptions.ConnectionError:
@@ -178,6 +216,7 @@ def chamar_modelo(url: str, cabecalhos: dict, corpo: dict, timeout: float) -> di
         raise ErroTriagem("Falha de comunicação com o servidor do LLM. Tente novamente.")
 
     status = resposta.status_code
+    log.info("Resposta HTTP %d em %.1f s", status, time.perf_counter() - inicio)
     if status in (401, 403):
         if "Authorization" in cabecalhos:
             raise ErroTriagem(
@@ -230,26 +269,49 @@ def resposta_no_formato(texto: str) -> bool:
 
 def exibir_resultado(texto: str) -> None:
     """Mostra o resultado da triagem no terminal."""
+    no_formato = resposta_no_formato(texto)
+    log.info("Resultado: %d caracteres, formato_esperado=%s", len(texto), no_formato)
     print("\n===== Resultado da triagem =====")
-    if not resposta_no_formato(texto):
+    if not no_formato:
         print("[Atenção] O modelo respondeu fora do formato esperado. "
               "Confira o texto abaixo manualmente.\n")
     print(texto)
 
 
+def configurar_log() -> None:
+    """Grava os registros de execução em logs/triagem.log (pasta fora do Git)."""
+    try:
+        ARQUIVO_LOG.parent.mkdir(exist_ok=True)
+        manipulador = logging.FileHandler(ARQUIVO_LOG, encoding="utf-8")
+    except OSError:
+        return  # sem permissão para gravar: o programa segue sem registros
+    manipulador.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    log.addHandler(manipulador)
+    log.setLevel(logging.INFO)
+
+
 def main() -> int:
+    configurar_log()
+    origem = "arquivo" if len(sys.argv) > 1 else "terminal"
+    log.info("Início da execução (entrada pelo %s)", origem)
     try:
         email = ler_entrada(sys.argv)
         config = carregar_config()
+        log.info("Configuração: temperatura=%s, max_tokens=%s, timeout=%ss, chave=%s",
+                 config["temperatura"], config["max_tokens"], config["timeout"],
+                 "definida" if config["chave"] else "não definida")
         url, cabecalhos, corpo = montar_requisicao(email, config)
         dados = chamar_modelo(url, cabecalhos, corpo, config["timeout"])
         texto = extrair_texto(dados)
         exibir_resultado(texto)
+        log.info("Execução concluída com sucesso")
         return 0
     except ErroTriagem as erro:
+        log.warning("Execução encerrada com erro tratado: %s", erro)
         print(f"\n[Erro] {erro}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
+        log.warning("Execução cancelada pelo usuário")
         print("\nExecução cancelada pelo usuário.", file=sys.stderr)
         return 130
 
