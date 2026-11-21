@@ -1,0 +1,3 @@
+# Dependências para rodar os testes automatizados (além das de requirements.txt)
+-r requirements.txt
+pytest==9.2.0

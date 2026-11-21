@@ -280,6 +280,8 @@ def exibir_resultado(texto: str) -> None:
 
 def configurar_log() -> None:
     """Grava os registros de execução em logs/triagem.log (pasta fora do Git)."""
+    if log.handlers:
+        return  # já configurado (evita linhas duplicadas se main() rodar de novo)
     try:
         ARQUIVO_LOG.parent.mkdir(exist_ok=True)
         manipulador = logging.FileHandler(ARQUIVO_LOG, encoding="utf-8")
