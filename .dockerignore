@@ -1,0 +1,12 @@
+# Mantém fora da imagem: segredos, ambientes, logs, Git e arquivos de desenvolvimento
+.env
+.venv/
+venv/
+logs/
+.git/
+__pycache__/
+*.pyc
+.pytest_cache/
+tests/
+notas/
+*.tar
