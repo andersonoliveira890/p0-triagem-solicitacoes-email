@@ -201,6 +201,13 @@ def chamar_modelo(url: str, cabecalhos: dict, corpo: dict, timeout: float) -> di
     inicio = time.perf_counter()
     try:
         resposta = requests.post(url, json=corpo, headers=cabecalhos, timeout=timeout)
+    except requests.exceptions.SSLError:
+        # Vem antes de ConnectionError, pois SSLError é um tipo de ConnectionError.
+        raise ErroTriagem(
+            "Não foi possível validar o certificado HTTPS do servidor do LLM. "
+            "Se o servidor usa uma autoridade certificadora interna, informe o "
+            "arquivo do certificado na variável REQUESTS_CA_BUNDLE."
+        )
     except requests.exceptions.ConnectionError:
         raise ErroTriagem(
             f"Não foi possível conectar ao servidor do LLM ({url}). "

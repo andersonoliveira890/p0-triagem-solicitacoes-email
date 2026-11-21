@@ -160,6 +160,7 @@ def test_chamada_sucesso():
 
 
 @pytest.mark.parametrize("excecao,trecho", [
+    (requests.exceptions.SSLError, "certificado HTTPS"),
     (requests.exceptions.ConnectionError, "Não foi possível conectar"),
     (requests.exceptions.Timeout, "não respondeu em 5 segundos"),
     (requests.exceptions.RequestException, "Falha de comunicação"),
