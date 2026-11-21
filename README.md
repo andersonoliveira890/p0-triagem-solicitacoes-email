@@ -89,6 +89,18 @@ publicado neste repositório.
 
 ### Passos
 
+Clone o repositório e entre na pasta:
+
+```bash
+git clone https://github.com/andersonoliveira890/p0-triagem-solicitacoes-email.git
+```
+
+```bash
+cd p0-triagem-solicitacoes-email
+```
+
+Crie o ambiente virtual:
+
 ```bash
 python -m venv .venv
 ```
