@@ -2,8 +2,8 @@
 
 Projeto P0 — Primeiro fluxo com LLM (capacitação TrendsIA / Instituto Hardware Br).
 
-> **Status:** nível Intermediário em construção (Básico concluído na tag
-> `p0-basico`). Este README será completado no nível Avançado.
+> **Status:** nível Avançado em construção. Marcos concluídos: `p0-basico`,
+> `p0-intermediario`.
 
 ## Problema
 
@@ -54,12 +54,20 @@ de acesso.
 ```
 .
 ├── main.py              # aplicação (todo o fluxo)
-├── requirements.txt     # dependências Python
+├── requirements.txt     # dependências para executar
+├── requirements-dev.txt # dependências para executar os testes (inclui pytest)
+├── pytest.ini           # configuração dos testes
 ├── .env.example         # modelo de configuração, sem segredos
-├── .gitignore           # impede versionar .env, ambiente virtual etc.
-├── exemplos/            # e-mails fictícios usados nos testes
+├── .gitignore           # impede versionar .env, ambiente virtual, logs etc.
+├── tests/               # testes automatizados (sem chamada real ao LLM)
+├── exemplos/            # e-mails fictícios usados nos testes manuais
 └── notas/               # registros de execução e de testes (base do relatório)
 ```
+
+Ao executar, o programa cria `logs/triagem.log` (fora do Git) com registros da
+execução. Os registros contêm apenas metadados (modelo, servidor, tamanho do
+e-mail, status, tempo e erros); **não** gravam o texto do e-mail, a resposta do
+modelo nem a chave de acesso.
 
 ## Dados
 
@@ -69,7 +77,17 @@ publicado neste repositório.
 
 ## Instalação
 
-Requer Python 3.10 ou superior.
+### Versões utilizadas
+
+| Componente | Versão |
+|---|---|
+| Python | 3.14.3 (deve funcionar a partir do 3.10; não testado em versões anteriores) |
+| requests | 2.32.3 |
+| python-dotenv | 1.0.1 |
+| pytest (só para testes) | 9.2.0 |
+| Ollama | 0.40.15 |
+
+### Passos
 
 ```bash
 python -m venv .venv
@@ -79,6 +97,13 @@ Windows (PowerShell):
 
 ```bash
 .venv\Scripts\Activate.ps1
+```
+
+Se o PowerShell recusar com "a execução de scripts foi desabilitada", libere
+scripts apenas para o seu usuário e tente de novo:
+
+```bash
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
 
 Linux / macOS:
@@ -132,6 +157,8 @@ copy .env.example .env
 | `LLM_BASE_URL` | Endereço do servidor Ollama (local ou institucional) |
 | `LLM_MODEL` | Nome do modelo (ex.: `qwen3.5:4b-q4_K_M`) |
 | `LLM_TIMEOUT` | Tempo máximo de espera pela resposta, em segundos (opcional; padrão `120`) |
+| `LLM_TEMPERATURE` | Temperatura de geração, de 0 a 2 (opcional; padrão `0.2`, para respostas estáveis) |
+| `LLM_MAX_TOKENS` | Limite de tokens da resposta (opcional; padrão `512`) |
 | `LLM_API_KEY` | Chave de acesso, se o servidor exigir; o Ollama local e o Devel não exigem, deixe vazio |
 
 Antes de executar, confirme que o Ollama está rodando (o aplicativo Ollama aberto
@@ -201,8 +228,29 @@ e preencha os valores.
 
 ## Testes
 
-Os testes estão registrados em
-[`notas/testes_erros_intermediario.md`](notas/testes_erros_intermediario.md).
+### Testes automatizados (sem chamada real ao LLM)
+
+Em [`tests/test_main.py`](tests/test_main.py), 45 testes verificam a lógica local:
+validação da entrada, carregamento e validação da configuração, preparação da
+requisição, tratamento de respostas e de erros. As chamadas HTTP são
+substituídas por respostas simuladas, então **não é preciso Ollama, internet nem
+chave** para rodá-los.
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+```bash
+python -m pytest
+```
+
+Saída esperada: `45 passed`.
+
+### Testes manuais
+
+Os testes manuais estão registrados em
+[`notas/testes_erros_intermediario.md`](notas/testes_erros_intermediario.md) e
+[`notas/avancado_parametros_e_logs.md`](notas/avancado_parametros_e_logs.md).
 
 - **Testes reais:** executados contra o Ollama local ou provocando a falha de
   verdade (entrada válida, entrada vazia, arquivo inexistente, configuração
@@ -211,7 +259,8 @@ Os testes estão registrados em
   respostas do Ollama (credencial ausente, credencial inválida, erro 500,
   timeout, resposta não-JSON, resposta vazia, texto fora do formato). Foram
   necessários porque o Ollama local não exige chave e não produz esses erros sob
-  demanda.
+  demanda. Os mesmos cenários estão cobertos pelos testes automatizados, que
+  qualquer pessoa pode repetir.
 
 ### Como reproduzir a falha de comunicação
 
@@ -237,4 +286,7 @@ Para voltar ao normal, abra o Ollama novamente.
   formato pedido; o programa avisa quando o formato não é reconhecido, mas não
   corrige o conteúdo. O resultado deve ser conferido pelo analista.
 - Processa um e-mail por execução.
+- Em computadores com pouca RAM livre, o Ollama pode responder erro 500 na
+  primeira chamada (o modelo não consegue ser carregado); feche programas
+  pesados e tente de novo.
 - O LLM institucional só é acessível de dentro de um container no portal Devel.
