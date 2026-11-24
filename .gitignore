@@ -12,6 +12,7 @@ __pycache__/
 
 # Imagens Docker exportadas para o portal Devel (arquivos grandes)
 *.tar
+*.zip
 
 # Logs
 *.log
